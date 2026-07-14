@@ -1,6 +1,6 @@
 import { Wallet } from "ethers";
-import { Log } from "@ethersproject/abstract-provider";
 import { RetryJsonRpcProvider, tuning, wait } from "./rpc";
+import { info, warn } from "./log";
 import { Stage, VERDICTS } from "./stage";
 import { GovernorStage, QueueGovernorStage, NomineeGovernorStage } from "./governorStage";
 import { TimelockStage } from "./timelockStage";
@@ -22,18 +22,6 @@ function envInt(name: string, fallback?: number): number {
     return fallback;
   }
   return parseInt(v);
-}
-
-function emit(stage: Stage, kind: string, log: Log) {
-  console.log(
-    JSON.stringify({
-      ts: new Date().toISOString(),
-      kind,
-      type: stage.stageType(),
-      address: stage.address,
-      log,
-    })
-  );
 }
 
 async function main() {
@@ -79,18 +67,25 @@ async function main() {
     new RetryableStage(env("NOVA_BRIDGE"), l1Timelock, l1UpgradeExecutor, ethProvider, novaSigner, ethStartBlock),
   ];
 
+  info("starting", {
+    signer: await ethSigner.getAddress(),
+    pollSeconds: pollMs / 1000,
+    stages: stages.map((s) => `${s.stageType()}:${s.address}`),
+  });
+
   while (true) {
     for (const stage of stages) {
-      for (const log of await stage.findEvents()) emit(stage, "found", log);
+      const ctx = { type: stage.stageType(), address: stage.address };
+      for (const log of await stage.findEvents()) info("found", { ...ctx, log });
       const res = await stage.handleEvents();
       for (const kind of VERDICTS) {
-        for (const log of res[kind]) emit(stage, kind, log);
+        for (const log of res[kind]) info(kind, { ...ctx, log });
       }
     }
     // only reached if every stage succeeded; a ping signals a fully successful iteration
     if (healthcheckUrl)
-      fetch(healthcheckUrl).catch((e) => console.error(JSON.stringify({ ts: new Date().toISOString(), kind: "healthcheck_failed", error: e })));
-    console.log(JSON.stringify({ ts: new Date().toISOString(), kind: "iteration_complete" }));
+      fetch(healthcheckUrl).catch((e) => warn("healthcheck ping failed", { error: String(e) }));
+    info("iteration complete");
     await wait(pollMs);
   }
 }

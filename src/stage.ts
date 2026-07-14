@@ -1,6 +1,7 @@
 import { Log, Filter } from "@ethersproject/abstract-provider";
 import { providers } from "ethers";
 import { getLogs } from "./rpc";
+import { debug } from "./log";
 
 export const VERDICTS = ["handled", "skipped", "waiting", "dead"] as const;
 export type Verdict = (typeof VERDICTS)[number];
@@ -40,6 +41,12 @@ export abstract class Stage implements IStage {
   async findEvents(): Promise<Log[]> {
     const latest = await this.findProvider.getBlockNumber();
     if (latest <= this.lastScanned) return [];
+    debug("scanning", {
+      type: this.stageType(),
+      address: this.address,
+      fromBlock: this.lastScanned + 1,
+      toBlock: latest,
+    });
     const logs = await getLogs(this.findProvider, this.findFilter(), this.lastScanned + 1, latest);
     const found = await this.filterFound(logs);
     this.lastScanned = latest;

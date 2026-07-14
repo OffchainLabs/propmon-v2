@@ -8,6 +8,7 @@ import {
   SecurityCouncilNomineeElectionGovernor__factory,
 } from "../typechain-types";
 import { Stage, Verdict } from "./stage";
+import { debug, info } from "./log";
 
 const govInterface = L2ArbitrumGovernor__factory.createInterface();
 
@@ -37,7 +38,14 @@ export class GovernorStage extends Stage {
 
   protected async handleLog(log: Log): Promise<Verdict> {
     const args = govInterface.parseLog(log).args;
+    const proposalId = args.proposalId.toString();
     const state: ProposalState = await this.governor.state(args.proposalId);
+    debug("proposal state", {
+      type: this.stageType(),
+      address: this.address,
+      proposalId,
+      state: ProposalState[state],
+    });
     if (state === ProposalState.Queued || state === ProposalState.Executed) return "skipped";
     if (
       state === ProposalState.Canceled ||
@@ -47,7 +55,14 @@ export class GovernorStage extends Stage {
       return "dead";
     if (state === ProposalState.Pending || state === ProposalState.Active) return "waiting";
     if (!(await this.readyToExecute(args.proposalId))) return "waiting";
-    await (await this.act(args)).wait();
+    const tx = await this.act(args);
+    await tx.wait();
+    info("proposal handled", {
+      type: this.stageType(),
+      address: this.address,
+      proposalId,
+      tx: tx.hash,
+    });
     return "handled";
   }
 

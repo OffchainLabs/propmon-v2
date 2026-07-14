@@ -1,6 +1,7 @@
 import { JsonRpcProvider } from "@ethersproject/providers";
 import { Log, Filter } from "@ethersproject/abstract-provider";
 import { providers } from "ethers";
+import { debug, warn } from "./log";
 
 export const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
@@ -47,6 +48,11 @@ export class RetryJsonRpcProvider extends JsonRpcProvider {
         return await super.send(method, params);
       } catch (e) {
         if (attempt >= this.retry.retryCount || !isTransientRpcError(e)) throw e;
+        warn("transient rpc error, retrying", {
+          method,
+          attempt: attempt + 1,
+          error: (e as Error).message,
+        });
         await wait(this.retry.retryIntervalMs);
       }
     }
@@ -65,6 +71,7 @@ export async function getLogs(
     return await provider.getLogs({ ...filter, fromBlock, toBlock });
   } catch (e) {
     if (fromBlock === toBlock) throw e;
+    debug("getLogs failed, bisecting", { fromBlock, toBlock, error: (e as Error).message });
     await wait(tuning.getLogsWaitMs);
     const mid = Math.floor((fromBlock + toBlock) / 2);
     return [

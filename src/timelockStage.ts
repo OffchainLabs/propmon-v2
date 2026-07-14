@@ -5,6 +5,7 @@ import { JsonRpcProvider } from "@ethersproject/providers";
 import { ArbitrumTimelock, ArbitrumTimelock__factory } from "../typechain-types";
 import { Inbox__factory } from "@arbitrum/sdk/dist/lib/abi/factories/Inbox__factory";
 import { Stage, Verdict } from "./stage";
+import { debug, info } from "./log";
 
 const timelockInterface = ArbitrumTimelock__factory.createInterface();
 
@@ -64,6 +65,12 @@ export class TimelockStage extends Stage {
       value = value.add(await this.executionValue(op.targets[i], op.values[i], op.datas[i]));
     }
 
+    info("executing timelock op", {
+      address: this.address,
+      opId,
+      targets: op.targets,
+      value: value.toString(),
+    });
     const tx = op.batch
       ? await this.timelock.executeBatch(op.targets, op.values, op.datas, op.predecessor, op.salt, {
           value,
@@ -79,6 +86,7 @@ export class TimelockStage extends Stage {
           }
         );
     await tx.wait();
+    info("timelock op executed", { address: this.address, opId, tx: tx.hash });
   }
 
   // value the executor must supply for this call: retryable ticket funding for
@@ -97,7 +105,9 @@ export class TimelockStage extends Stage {
       await this.findProvider.getGasPrice()
     );
     // double the submission fee to leave leeway for the base fee to increase
-    return submissionFee.mul(2).add(gasLimit.mul(maxFeePerGas)).add(l2Value);
+    const funding = submissionFee.mul(2).add(gasLimit.mul(maxFeePerGas)).add(l2Value);
+    debug("retryable ticket funding", { inbox, funding: funding.toString() });
+    return funding;
   }
 }
 

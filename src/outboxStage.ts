@@ -7,6 +7,7 @@ import { ArbSys__factory } from "@arbitrum/sdk/dist/lib/abi/factories/ArbSys__fa
 import { Outbox__factory } from "@arbitrum/sdk/dist/lib/abi/factories/Outbox__factory";
 import { Outbox } from "@arbitrum/sdk/dist/lib/abi/Outbox";
 import { Stage, Verdict } from "./stage";
+import { debug, info } from "./log";
 
 const arbSysInterface = ArbSys__factory.createInterface();
 
@@ -44,12 +45,20 @@ export class OutboxStage extends Stage {
 
   protected async handleLog(log: Log): Promise<Verdict> {
     const event = arbSysInterface.parseLog(log).args as unknown as EventArgs<L2ToL1TxEvent>;
+    const position = event.position.toString();
     if (await this.outbox.isSpent(event.position)) return "skipped";
     const message = L2ToL1Message.fromEvent(this.handleSigner, event);
     const status = await message.status(this.findProvider);
+    debug("l2->l1 message status", {
+      address: this.address,
+      position,
+      status: L2ToL1MessageStatus[status],
+    });
     if (status === L2ToL1MessageStatus.EXECUTED) return "skipped";
     if (status === L2ToL1MessageStatus.UNCONFIRMED) return "waiting";
-    await (await message.execute(this.findProvider)).wait();
+    const tx = await message.execute(this.findProvider);
+    await tx.wait();
+    info("l2->l1 message executed", { address: this.address, position, tx: tx.hash });
     return "handled";
   }
 }

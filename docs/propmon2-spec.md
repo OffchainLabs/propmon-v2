@@ -111,9 +111,9 @@ const stages: IStage[] = [
 
 while (true) {
   for (const stage of stages) {
-    for (const log of await stage.findEvents())       emit(stage, "found", log)
+    for (const log of await stage.findEvents())       info("found", { type, address, log })
     const { handled, skipped, waiting, dead } = await stage.handleEvents()
-    // emit one line per log in each bucket
+    // one info line per log in each bucket
   }
   ping()  // fire-and-forget GET to PROPMON_HEALTHCHECK_URL, if set
   await sleep(pollIntervalSeconds)
@@ -139,6 +139,7 @@ All config comes from env vars, read once at startup; missing required vars thro
 - `PROPMON_HEALTHCHECK_URL` (optional) - pinged after each successful poll iteration
 - tuning (defaulted): `POLL_INTERVAL_SECONDS`, `RPC_RETRY_COUNT`,
   `RPC_RETRY_INTERVAL_SECONDS`, `GETLOGS_WAIT_SECONDS`
+- `LOG_LEVEL` - `debug | info | warn`, default `info`
 
 ## Errors
 
@@ -158,13 +159,16 @@ errors (especially reverts) must never be retried.
 
 ## Output
 
-One JSON object per line on stdout. Logs are emitted raw (no decoding -
-downstream tools render); stages only parse logs internally where needed to
-function. `(transactionHash, logIndex)` identifies a log across lines.
+Structured JSON logging via `src/log.ts`: `debug()` / `info()` / `warn()`, one
+`{ts, level, msg, ...fields}` object per line filtered by `LOG_LEVEL`. Event lines use the verdict as `msg`
+(`found | handled | skipped | waiting | dead`) and carry the raw log (no
+decoding - downstream tools render); stages only parse logs internally where
+needed to function. `(transactionHash, logIndex)` identifies a log across lines.
 
 ```json
-{"ts":"2026-07-09T12:00:00Z","kind":"found","type":"TimelockStage","address":"0x34d4...","log":{"address":"0x34d4...","topics":["0x4cf4...","0x8a71..."],"data":"0x...","blockNumber":362000000,"transactionHash":"0x...","logIndex":3}}
-{"ts":"2026-07-09T12:00:05Z","kind":"waiting","type":"TimelockStage","address":"0x34d4...","log":{"transactionHash":"0x...","logIndex":3, ...}}
+{"ts":"2026-07-09T12:00:00Z","level":"info","msg":"found","type":"TimelockStage","address":"0x34d4...","log":{"address":"0x34d4...","topics":["0x4cf4...","0x8a71..."],"data":"0x...","blockNumber":362000000,"transactionHash":"0x...","logIndex":3}}
+{"ts":"2026-07-09T12:00:05Z","level":"info","msg":"waiting","type":"TimelockStage","address":"0x34d4...","log":{"transactionHash":"0x...","logIndex":3, ...}}
 ```
 
-Kinds: `found | handled | skipped | waiting | dead`.
+Stages also log execution details (op/proposal ids, tx hashes) at `info`,
+scan ranges and on-chain statuses at `debug`, and rpc retries at `warn`.

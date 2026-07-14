@@ -7,6 +7,7 @@ import { Bridge__factory } from "@arbitrum/sdk/dist/lib/abi/factories/Bridge__fa
 import { ArbitrumTimelock__factory } from "../typechain-types";
 import { getLogs } from "./rpc";
 import { Stage, Verdict } from "./stage";
+import { debug, info } from "./log";
 
 const bridgeInterface = Bridge__factory.createInterface();
 const messageDeliveredTopic = bridgeInterface.getEventTopic("MessageDelivered");
@@ -48,6 +49,12 @@ export class RetryableStage extends Stage {
   async findEvents(): Promise<Log[]> {
     const latest = await this.findProvider.getBlockNumber();
     if (latest <= this.lastScanned) return [];
+    debug("scanning", {
+      type: this.stageType(),
+      address: this.address,
+      fromBlock: this.lastScanned + 1,
+      toBlock: latest,
+    });
     const executions = [
       ...(await getLogs(
         this.findProvider,
@@ -96,11 +103,22 @@ export class RetryableStage extends Stage {
       );
     }
     const status = await message.status();
+    debug("retryable status", {
+      address: this.address,
+      messageNumber: message.messageNumber.toString(),
+      status: L1ToL2MessageStatus[status],
+    });
     if (status === L1ToL2MessageStatus.REDEEMED) return "skipped";
     if (status === L1ToL2MessageStatus.NOT_YET_CREATED) return "waiting";
     if (status === L1ToL2MessageStatus.CREATION_FAILED || status === L1ToL2MessageStatus.EXPIRED)
       return "dead";
-    await (await message.redeem()).wait();
+    const tx = await message.redeem();
+    await tx.wait();
+    info("retryable redeemed", {
+      address: this.address,
+      messageNumber: message.messageNumber.toString(),
+      tx: tx.hash,
+    });
     return "handled";
   }
 }
