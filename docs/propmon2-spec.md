@@ -90,18 +90,7 @@ class GovernorStage implements IStage {
 | GovernorStage  | ProposalCreated (Arb1)               | queue() / execute() after vote succeeds  |
 | TimelockStage  | CallScheduled (Arb1 or L1)           | execute() / executeBatch() after delay   |
 | OutboxStage    | L2ToL1Tx from ArbSys (Arb1), caller+destination-filtered | Outbox.executeTransaction (L1) |
-| RetryableStage | MessageDelivered from Bridge (L1), sender-filtered | ArbRetryableTx.redeem (Arb1 or Nova) |
-
-GovernorStage variants: base = execute() when Succeeded (member election
-governor); QueueGovernorStage = queue() instead (core, treasury); NomineeGovernorStage
-= also wait for the vetting deadline (an L1 block number) before execute().
-OutboxStage and RetryableStage are cross-chain: constructor takes
-(address, findProvider, handleSigner). Both ignore unrelated traffic:
-OutboxStage only picks up L2ToL1Tx with caller == the L2 timelock and
-destination == the L1 timelock (destination is an indexed topic; caller is
-filtered client-side); RetryableStage only picks up MessageDelivered with
-sender in a configured list - the L1 timelock and the L1 upgrade executor
-(each aliased or not, filtered client-side).
+| RetryableStage | L1 timelock / upgrade executor execution events, then MessageDelivered in those txs | ArbRetryableTx.redeem (Arb1 or Nova) |
 
 ## Main loop
 
@@ -116,8 +105,8 @@ const stages: IStage[] = [
   new TimelockStage(l2Timelock, arbSigner, arbStartBlock),
   new OutboxStage(arbSys, l2Timelock, l1Timelock, arbProvider, l1Outbox, ethSigner, arbStartBlock),
   new TimelockStage(l1Timelock, ethSigner, ethStartBlock),
-  new RetryableStage(arbBridge, [l1Timelock, l1UpgradeExecutor], ethProvider, arbSigner, ethStartBlock),
-  new RetryableStage(novaBridge, [l1Timelock, l1UpgradeExecutor], ethProvider, novaSigner, ethStartBlock),
+  new RetryableStage(arbBridge, l1Timelock, l1UpgradeExecutor, ethProvider, arbSigner, ethStartBlock),
+  new RetryableStage(novaBridge, l1Timelock, l1UpgradeExecutor, ethProvider, novaSigner, ethStartBlock),
 ]
 
 while (true) {

@@ -1,39 +1,83 @@
 import { Signer, providers } from "ethers";
+import { id } from "ethers/lib/utils";
 import { Log } from "@ethersproject/abstract-provider";
 import { L1TransactionReceipt, L1ToL2MessageStatus } from "@arbitrum/sdk";
 import { Address } from "@arbitrum/sdk/dist/lib/dataEntities/address";
 import { Bridge__factory } from "@arbitrum/sdk/dist/lib/abi/factories/Bridge__factory";
+import { ArbitrumTimelock__factory } from "../typechain-types";
+import { getLogs } from "./rpc";
 import { Stage, Verdict } from "./stage";
 
 const bridgeInterface = Bridge__factory.createInterface();
+const messageDeliveredTopic = bridgeInterface.getEventTopic("MessageDelivered");
+const callExecutedTopic = ArbitrumTimelock__factory.createInterface().getEventTopic("CallExecuted");
+// UpgradeExecutor.execute (delegatecall) and executeCall (call)
+const upgradeExecutorTopics = [
+  id("UpgradeExecuted(address,uint256,bytes)"),
+  id("TargetCallExecuted(address,uint256,bytes)"),
+];
 
-// finds retryable tickets created by one of the configured senders (scanning
-// the bridge's MessageDelivered for sender) and redeems them on the L2 via
-// ArbRetryableTx
+// governance retryables only come from L1 timelock / upgrade executor
+// executions, and the bridge's MessageDelivered is far too noisy to scan
+// directly: find execution events on those two contracts, then pick our
+// MessageDelivered logs out of the same transactions. handleEvents redeems
+// the tickets on the L2 via ArbRetryableTx
 export class RetryableStage extends Stage {
   private readonly senders: string[];
 
   constructor(
     bridge: string,
-    senders: string[],
+    private readonly l1Timelock: string,
+    private readonly l1UpgradeExecutor: string,
     findProvider: providers.Provider,
     private readonly handleSigner: Signer,
     startBlock: number
   ) {
     super(bridge, findProvider, startBlock);
     // the inbox may record the sender aliased or not depending on its version
-    this.senders = senders.flatMap((s) => [
+    this.senders = [l1Timelock, l1UpgradeExecutor].flatMap((s) => [
       s.toLowerCase(),
       new Address(s).applyAlias().value.toLowerCase(),
     ]);
   }
 
-  protected findFilter() {
-    return { address: this.address, topics: [bridgeInterface.getEventTopic("MessageDelivered")] };
+  protected findFilter(): never {
+    throw new Error("unreachable: findEvents is overridden");
   }
 
-  protected async filterFound(logs: Log[]): Promise<Log[]> {
-    return logs.filter((log) =>
+  async findEvents(): Promise<Log[]> {
+    const latest = await this.findProvider.getBlockNumber();
+    if (latest <= this.lastScanned) return [];
+    const executions = [
+      ...(await getLogs(
+        this.findProvider,
+        { address: this.l1Timelock, topics: [callExecutedTopic] },
+        this.lastScanned + 1,
+        latest
+      )),
+      ...(await getLogs(
+        this.findProvider,
+        { address: this.l1UpgradeExecutor, topics: [upgradeExecutorTopics] },
+        this.lastScanned + 1,
+        latest
+      )),
+    ];
+    const found: Log[] = [];
+    for (const txHash of new Set(executions.map((l) => l.transactionHash))) {
+      const receipt = await this.findProvider.getTransactionReceipt(txHash);
+      found.push(...receipt.logs.filter((l) => this.isGovernanceTicket(l)));
+    }
+    this.lastScanned = latest;
+    this.toHandle.push(...found);
+    return found;
+  }
+
+  // one execution can create tickets on several bridges; the address check
+  // keeps each stage instance on its own bridge
+  private isGovernanceTicket(log: Log): boolean {
+    return (
+      log.address.toLowerCase() === this.address.toLowerCase() &&
+      log.topics[0] === messageDeliveredTopic &&
       this.senders.includes(bridgeInterface.parseLog(log).args.sender.toLowerCase())
     );
   }

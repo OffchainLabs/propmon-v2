@@ -57,7 +57,7 @@ async function main() {
   const ethStartBlock = envInt("ETH_START_BLOCK");
   const l2Timelock = env("L2_TIMELOCK");
   const l1Timelock = env("L1_TIMELOCK");
-  const l1Senders = [l1Timelock, env("L1_UPGRADE_EXECUTOR")];
+  const l1UpgradeExecutor = env("L1_UPGRADE_EXECUTOR");
 
   const stages: Stage[] = [
     new QueueGovernorStage(env("CORE_GOVERNOR"), arbSigner, arbStartBlock),
@@ -75,8 +75,8 @@ async function main() {
       arbStartBlock
     ),
     new TimelockStage(l1Timelock, ethSigner, ethStartBlock),
-    new RetryableStage(env("ARB_BRIDGE"), l1Senders, ethProvider, arbSigner, ethStartBlock),
-    new RetryableStage(env("NOVA_BRIDGE"), l1Senders, ethProvider, novaSigner, ethStartBlock),
+    new RetryableStage(env("ARB_BRIDGE"), l1Timelock, l1UpgradeExecutor, ethProvider, arbSigner, ethStartBlock),
+    new RetryableStage(env("NOVA_BRIDGE"), l1Timelock, l1UpgradeExecutor, ethProvider, novaSigner, ethStartBlock),
   ];
 
   while (true) {
@@ -89,7 +89,8 @@ async function main() {
     }
     // only reached if every stage succeeded; a ping signals a fully successful iteration
     if (healthcheckUrl)
-      fetch(healthcheckUrl).catch((e) => console.error("healthcheck ping error:", e));
+      fetch(healthcheckUrl).catch((e) => console.error(JSON.stringify({ ts: new Date().toISOString(), kind: "healthcheck_failed", error: e })));
+    console.log(JSON.stringify({ ts: new Date().toISOString(), kind: "iteration_complete" }));
     await wait(pollMs);
   }
 }
