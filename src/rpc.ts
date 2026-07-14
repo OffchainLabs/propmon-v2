@@ -22,10 +22,12 @@ const connectionCodes = ["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EAI_AGAIN",
 export function isTransientRpcError(e: any): boolean {
   if (e.code === "TIMEOUT") return true;
   if (connectionCodes.includes(e.code)) return true;
-  // http error: transient unless a 4xx other than 429
   if (e.code === "SERVER_ERROR") {
-    const status = e.status;
-    return typeof status !== "number" || status === 429 || status >= 500;
+    // http error: transient unless a 4xx other than 429
+    if (typeof e.status === "number") return e.status === 429 || e.status >= 500;
+    // http 200 with a json-rpc error body (e.g. a revert): classify by the inner error
+    if (e.error) return isTransientRpcError(e.error);
+    return true;
   }
   if (e.code === -32005) return true;
   const msg = typeof e.message === "string" ? e.message.toLowerCase() : "";
