@@ -38,7 +38,7 @@ function emit(stage: Stage, kind: string, log: Log) {
 
 async function main() {
   tuning.getLogsWaitMs = envInt("GETLOGS_WAIT_SECONDS", 5) * 1000;
-  const pollMs = envInt("POLL_INTERVAL_SECONDS", 3600) * 1000;
+  const pollMs = envInt("POLL_INTERVAL_SECONDS", 60) * 1000;
   const retry = {
     retryCount: envInt("RPC_RETRY_COUNT", 5),
     retryIntervalMs: envInt("RPC_RETRY_INTERVAL_SECONDS", 5) * 1000,
