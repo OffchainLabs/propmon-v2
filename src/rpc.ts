@@ -1,12 +1,7 @@
 import { JsonRpcProvider } from "@ethersproject/providers";
-import { Log, Filter } from "@ethersproject/abstract-provider";
-import { providers } from "ethers";
 import { debug, warn } from "./log";
 
 export const wait = (ms: number) => new Promise((res) => setTimeout(res, ms));
-
-// overridden once at startup from env config
-export const tuning = { getLogsWaitMs: 5000 };
 
 const transientMessages = [
   "header not found",
@@ -34,21 +29,57 @@ export function isTransientRpcError(e: any): boolean {
   return transientMessages.some((m) => msg.includes(m));
 }
 
-export type RetryConfig = { retryCount: number; retryIntervalMs: number };
+export type RetryConfig = { retryCount: number; retryIntervalMs: number; getLogsWaitMs: number };
 
 // retries transient rpc errors; everything else (reverts, nonce/funds errors, ...) throws.
-// eth_getLogs is exempt: the bisecting getLogs helper below is its only retry path.
+// a failed eth_getLogs first bisects its block range
 export class RetryJsonRpcProvider extends JsonRpcProvider {
   constructor(url: string, public readonly retry: RetryConfig) {
     super(url);
   }
 
+  // halves of a failed getLogs filter, resolving absent/"latest" bounds once; null
+  // when unsplittable (single block, or a tag we can't resolve), letting the
+  // original error flow through the retry/classify path in send()
+  private async bisect(filter: any): Promise<[any, any] | null> {
+    const parseBlock = async (b: string | number | null | undefined) => {
+      if (b === null || b === undefined || b === "latest") return await this.getBlockNumber();
+      if (typeof b === "number") return b;
+      if (typeof b === "string" && b.startsWith("0x")) return parseInt(b, 16);
+      return null;
+    };
+    const from = await parseBlock(filter.fromBlock);
+    const to = await parseBlock(filter.toBlock);
+    if (from === null || to === null || from >= to) return null;
+    const mid = Math.floor((from + to) / 2);
+    const hex = (n: number) => "0x" + n.toString(16);
+    return [
+      { ...filter, fromBlock: hex(from), toBlock: hex(mid) },
+      { ...filter, fromBlock: hex(mid + 1), toBlock: hex(to) },
+    ];
+  }
+
   async send(method: string, params: any[]): Promise<any> {
-    if (method === "eth_getLogs") return super.send(method, params);
     for (let attempt = 0; ; attempt++) {
       try {
         return await super.send(method, params);
       } catch (e) {
+        if (method === "eth_getLogs") {
+          const halves = await this.bisect(params[0]);
+          if (halves) {
+            debug("getLogs failed, bisecting", {
+              fromBlock: params[0].fromBlock,
+              toBlock: params[0].toBlock,
+              error: (e as Error).message,
+            });
+            await wait(this.retry.getLogsWaitMs);
+            // sequential left-then-right recursion keeps logs in order
+            return [
+              ...(await this.send(method, [halves[0]])),
+              ...(await this.send(method, [halves[1]])),
+            ];
+          }
+        }
         if (attempt >= this.retry.retryCount || !isTransientRpcError(e)) throw e;
         warn("transient rpc error, retrying", {
           method,
@@ -58,27 +89,5 @@ export class RetryJsonRpcProvider extends JsonRpcProvider {
         await wait(this.retry.retryIntervalMs);
       }
     }
-  }
-}
-
-// any failure bisects the range; a failure on a single block throws.
-// sequential left-then-right recursion keeps logs in order.
-export async function getLogs(
-  provider: providers.Provider,
-  filter: Omit<Filter, "fromBlock" | "toBlock">,
-  fromBlock: number,
-  toBlock: number
-): Promise<Log[]> {
-  try {
-    return await provider.getLogs({ ...filter, fromBlock, toBlock });
-  } catch (e) {
-    if (fromBlock === toBlock) throw e;
-    debug("getLogs failed, bisecting", { fromBlock, toBlock, error: (e as Error).message });
-    await wait(tuning.getLogsWaitMs);
-    const mid = Math.floor((fromBlock + toBlock) / 2);
-    return [
-      ...(await getLogs(provider, filter, fromBlock, mid)),
-      ...(await getLogs(provider, filter, mid + 1, toBlock)),
-    ];
   }
 }

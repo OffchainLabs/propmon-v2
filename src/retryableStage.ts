@@ -5,7 +5,6 @@ import { L1TransactionReceipt, L1ToL2MessageStatus } from "@arbitrum/sdk";
 import { Address } from "@arbitrum/sdk/dist/lib/dataEntities/address";
 import { Bridge__factory } from "@arbitrum/sdk/dist/lib/abi/factories/Bridge__factory";
 import { ArbitrumTimelock__factory } from "../typechain-types";
-import { getLogs } from "./rpc";
 import { Stage, Verdict } from "./stage";
 import { debug, info } from "./log";
 
@@ -56,18 +55,18 @@ export class RetryableStage extends Stage {
       toBlock: latest,
     });
     const executions = [
-      ...(await getLogs(
-        this.findProvider,
-        { address: this.l1Timelock, topics: [callExecutedTopic] },
-        this.lastScanned + 1,
-        latest
-      )),
-      ...(await getLogs(
-        this.findProvider,
-        { address: this.l1UpgradeExecutor, topics: [upgradeExecutorTopics] },
-        this.lastScanned + 1,
-        latest
-      )),
+      ...(await this.findProvider.getLogs({
+        address: this.l1Timelock,
+        topics: [callExecutedTopic],
+        fromBlock: this.lastScanned + 1,
+        toBlock: latest,
+      })),
+      ...(await this.findProvider.getLogs({
+        address: this.l1UpgradeExecutor,
+        topics: [upgradeExecutorTopics],
+        fromBlock: this.lastScanned + 1,
+        toBlock: latest,
+      })),
     ];
     const found: Log[] = [];
     for (const txHash of new Set(executions.map((l) => l.transactionHash))) {

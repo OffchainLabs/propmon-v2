@@ -26,26 +26,15 @@ interface IStage {
   - ready: send the handling tx. Success -> `handled`. Revert/failure -> throw.
   - any verdict except `waiting` removes the log from `toHandle`
 
-All event queries go through a bisecting helper, to protect against provider
-"log lookup range too big" limits as simply as possible:
-
-```ts
-async function getLogs(provider, filter, fromBlock, toBlock): Promise<Log[]> {
-  try { return await provider.getLogs({ ...filter, fromBlock, toBlock }) }
-  catch (e) {
-    if (fromBlock === toBlock) throw e
-    await wait(X seconds)
-    const mid = Math.floor((fromBlock + toBlock) / 2)
-    return [...await getLogs(provider, filter, fromBlock, mid),
-            ...await getLogs(provider, filter, mid + 1, toBlock)]
-  }
-}
-```
-
-Any failure bisects; a failure on a single-block range throws. Sequential
-left-then-right recursion keeps logs in order. `RetryJsonRpcProvider.send()`
-skips its retry logic for `eth_getLogs` so the helper's wait-and-bisect is the
-only retry path for log queries.
+`RetryJsonRpcProvider.send()` handles `eth_getLogs` failures by bisection, to
+protect against provider "log lookup range too big" limits as simply as
+possible: any failure waits X seconds, splits the block range in half
+(absent or `"latest"` bounds resolve to the current block number first), and
+recurses; an unsplittable query (single block, blockHash filter, unresolvable
+tag) falls through to the normal transient-retry path.
+Sequential left-then-right recursion keeps logs in order. Because this lives
+in `send()`, it covers every log query, including those the Arbitrum SDK
+issues internally.
 
 Pseudocode (GovernorStage, the base execute variant, as the example):
 
@@ -56,7 +45,7 @@ class GovernorStage implements IStage {
 
   async findEvents() {
     const latest = await provider.getBlockNumber()
-    const logs = await getLogs(provider, governor.filters.ProposalCreated(), this.lastScanned + 1, latest)
+    const logs = await provider.getLogs({ ...governor.filters.ProposalCreated(), fromBlock: this.lastScanned + 1, toBlock: latest })
     this.lastScanned = latest
     this.toHandle.push(...logs)
     return logs
@@ -143,7 +132,8 @@ All config comes from env vars, read once at startup; missing required vars thro
 
 ## Errors
 
-The only errors ever caught are transient RPC errors. All providers are
+The only errors ever caught are transient RPC errors and failed `eth_getLogs`
+queries (bisected, see above). All providers are
 `RetryJsonRpcProvider`, a `JsonRpcProvider` subclass whose `send()` override
 retries up to N times with a fixed X-second interval, then throws. Since every
 ethers call funnels through `send()`, stage code contains no retry logic.

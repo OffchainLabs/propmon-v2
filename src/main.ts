@@ -1,5 +1,5 @@
 import { Wallet } from "ethers";
-import { RetryJsonRpcProvider, tuning, wait } from "./rpc";
+import { RetryJsonRpcProvider, wait } from "./rpc";
 import { info, warn } from "./log";
 import { Stage, VERDICTS } from "./stage";
 import { GovernorStage, QueueGovernorStage, NomineeGovernorStage } from "./governorStage";
@@ -25,11 +25,11 @@ function envInt(name: string, fallback?: number): number {
 }
 
 async function main() {
-  tuning.getLogsWaitMs = envInt("GETLOGS_WAIT_SECONDS", 5) * 1000;
   const pollMs = envInt("POLL_INTERVAL_SECONDS", 60) * 1000;
   const retry = {
     retryCount: envInt("RPC_RETRY_COUNT", 5),
     retryIntervalMs: envInt("RPC_RETRY_INTERVAL_SECONDS", 5) * 1000,
+    getLogsWaitMs: envInt("GETLOGS_WAIT_SECONDS", 5) * 1000,
   };
 
   const key = env("PROPMON_PRIVATE_KEY");

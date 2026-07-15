@@ -1,6 +1,5 @@
 import { Log, Filter } from "@ethersproject/abstract-provider";
 import { providers } from "ethers";
-import { getLogs } from "./rpc";
 import { debug } from "./log";
 
 export const VERDICTS = ["handled", "skipped", "waiting", "dead"] as const;
@@ -47,7 +46,11 @@ export abstract class Stage implements IStage {
       fromBlock: this.lastScanned + 1,
       toBlock: latest,
     });
-    const logs = await getLogs(this.findProvider, this.findFilter(), this.lastScanned + 1, latest);
+    const logs = await this.findProvider.getLogs({
+      ...this.findFilter(),
+      fromBlock: this.lastScanned + 1,
+      toBlock: latest,
+    });
     const found = await this.filterFound(logs);
     this.lastScanned = latest;
     this.toHandle.push(...found);
