@@ -81,6 +81,15 @@ class GovernorStage implements IStage {
 | OutboxStage    | L2ToL1Tx from ArbSys (Arb1), caller+destination-filtered | Outbox.executeTransaction (L1) |
 | RetryableStage | L1 timelock / upgrade executor execution events, then MessageDelivered in those txs | ArbRetryableTx.redeem (Arb1 or Nova) |
 
+## Modes
+
+The mode comes from `PROPMON_MODE`, default `arb-full-governance`:
+
+- `arb-full-governance` - all Arbitrum DAO stages (the list below)
+- `individual-stage` - a single stage against any contract, selected by
+  `STAGE_TYPE` (`governor | queue-governor | nominee-governor | timelock |
+  outbox | retryable`) and configured by its own env vars (see `.env-sample`)
+
 ## Main loop
 
 ```ts
@@ -116,19 +125,34 @@ iteration succeeded.
 
 All config comes from env vars, read once at startup; missing required vars throw.
 
+Common:
+
+- `PROPMON_PRIVATE_KEY` - one key, funded on every chain the mode sends on
+- `PROPMON_HEALTHCHECK_URL` (optional) - pinged after each successful poll iteration
+- tuning (defaulted): `POLL_INTERVAL_SECONDS`, `RPC_RETRY_COUNT`,
+  `RPC_RETRY_INTERVAL_SECONDS`, `GETLOGS_WAIT_SECONDS`
+- `LOG_LEVEL` - `debug | info | warn`, default `info`
+
+`arb-full-governance`:
+
 - `ETH_RPC_URL`, `ARB_RPC_URL`, `NOVA_RPC_URL` - the first two must support
   `debug_traceTransaction` with `callTracer` (used by TimelockStage op
   recovery; public endpoints generally don't serve debug methods)
-- `PROPMON_PRIVATE_KEY` - one key, funded on all three chains
 - addresses: `CORE_GOVERNOR`, `TREASURY_GOVERNOR`, `NOMINEE_ELECTION_GOVERNOR`,
   `MEMBER_ELECTION_GOVERNOR`, `L2_TIMELOCK`, `L1_TIMELOCK`, `L1_OUTBOX`,
   `L1_UPGRADE_EXECUTOR`, `ARB_BRIDGE`, `NOVA_BRIDGE` (ArbSys is the fixed
   precompile `0x...64`)
 - `ARB_START_BLOCK`, `ETH_START_BLOCK`
-- `PROPMON_HEALTHCHECK_URL` (optional) - pinged after each successful poll iteration
-- tuning (defaulted): `POLL_INTERVAL_SECONDS`, `RPC_RETRY_COUNT`,
-  `RPC_RETRY_INTERVAL_SECONDS`, `GETLOGS_WAIT_SECONDS`
-- `LOG_LEVEL` - `debug | info | warn`, default `info`
+
+`individual-stage`:
+
+- `STAGE_TYPE`, `STAGE_ADDRESS` (the contract the stage acts on),
+  `START_BLOCK` (on the chain findEvents runs on)
+- governor variants and timelock: `RPC_URL` (timelock needs debug methods)
+- outbox: `L2_RPC_URL` (find), `L1_RPC_URL` (execute), `L2_CALLER`,
+  `L1_DESTINATION`
+- retryable: `L1_RPC_URL` (find), `L2_RPC_URL` (redeem), `L1_TIMELOCK`,
+  `L1_UPGRADE_EXECUTOR`
 
 ## Errors
 
