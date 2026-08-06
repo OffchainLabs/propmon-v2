@@ -2,8 +2,8 @@
 {
   "chains": {
     // eth and arb serve timelock stages and so need debug_traceTransaction
-    "eth": { "rpcUrlEnv": "ETH_RPC_URL", "startBlock": 25690000 },
-    "arb": { "rpcUrlEnv": "ARB_RPC_URL", "startBlock": 491700000 },
+    "eth": { "rpcUrlEnv": "ETH_RPC_URL", "startBlock": 15016829 },
+    "arb": { "rpcUrlEnv": "ARB_RPC_URL", "startBlock": 70398215 },
     // redeem-only (no finding), so no startBlock
     "nova": { "rpcUrlEnv": "NOVA_RPC_URL" }
   },
