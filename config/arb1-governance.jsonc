@@ -1,0 +1,50 @@
+// Full Arbitrum DAO governance: every stage a proposal can pass through.
+{
+  "chains": {
+    // eth and arb serve timelock stages and so need debug_traceTransaction
+    "eth": { "rpcUrlEnv": "ETH_RPC_URL", "startBlock": 15016829 },
+    "arb": { "rpcUrlEnv": "ARB_RPC_URL", "startBlock": 70398215 },
+    // redeem-only (no finding), so no startBlock
+    "nova": { "rpcUrlEnv": "NOVA_RPC_URL" }
+  },
+  "stages": [
+    // core governor
+    { "type": "queue-governor", "chain": "arb", "address": "0xf07DeD9dC292157749B6Fd268E37DF6EA38395B9" },
+    // treasury governor
+    { "type": "queue-governor", "chain": "arb", "address": "0x789fC99093B09aD01C34DC7251D0C89ce743e5a4" },
+    // security council nominee election governor
+    { "type": "nominee-governor", "chain": "arb", "address": "0x8a1cDA8dee421cD06023470608605934c16A05a0" },
+    // security council member election governor
+    { "type": "governor", "chain": "arb", "address": "0x467923B9AE90BDB36BA88eCA11604D45F13b712C" },
+    // L2 core timelock
+    { "type": "timelock", "chain": "arb", "address": "0x34d45e99f7D8c45ed05B5cA72D54bbD1fb3F98f0" },
+    // L2->L1 path
+    {
+      "type": "outbox",
+      "address": "0x0B9857ae2D4A3DBe74ffE1d7DF045bb7F96E4840",
+      "l2Chain": "arb",
+      "l1Chain": "eth",
+      "l2Caller": "0x34d45e99f7D8c45ed05B5cA72D54bbD1fb3F98f0",
+      "l1Destination": "0xE6841D92B0C345144506576eC13ECf5103aC7f49"
+    },
+    // L1 timelock
+    { "type": "timelock", "chain": "eth", "address": "0xE6841D92B0C345144506576eC13ECf5103aC7f49" },
+    // L1->L2 retryables created by L1 timelock / upgrade executor executions
+    {
+      "type": "retryable",
+      "address": "0x8315177aB297bA92A06054cE80a67Ed4DBd7ed3a",
+      "l1Chain": "eth",
+      "l2Chain": "arb",
+      "l1Timelock": "0xE6841D92B0C345144506576eC13ECf5103aC7f49",
+      "l1UpgradeExecutor": "0x3ffFbAdAF827559da092217e474760E2b2c3CeDd"
+    },
+    {
+      "type": "retryable",
+      "address": "0xC1Ebd02f738644983b6C4B2d440b8e77DdE276Bd",
+      "l1Chain": "eth",
+      "l2Chain": "nova",
+      "l1Timelock": "0xE6841D92B0C345144506576eC13ECf5103aC7f49",
+      "l1UpgradeExecutor": "0x3ffFbAdAF827559da092217e474760E2b2c3CeDd"
+    }
+  ]
+}
