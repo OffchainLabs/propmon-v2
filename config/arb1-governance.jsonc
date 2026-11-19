@@ -18,6 +18,8 @@
     { "type": "governor", "chain": "arb", "address": "0x467923B9AE90BDB36BA88eCA11604D45F13b712C" },
     // L2 core timelock
     { "type": "timelock", "chain": "arb", "address": "0x34d45e99f7D8c45ed05B5cA72D54bbD1fb3F98f0" },
+    // L2 treasury timelock
+    { "type": "timelock", "chain": "arb", "address": "0xbFc1FECa8B09A5c5D3EFfE7429eBE24b9c09EF58" },
     // L2->L1 path
     {
       "type": "outbox",
